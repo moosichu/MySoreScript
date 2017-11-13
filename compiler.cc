@@ -6,6 +6,7 @@
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetSelect.h>
+#include "IntSpecialisationPass.hh"
 
 using namespace llvm;
 using llvm::legacy::PassManager;
@@ -121,6 +122,8 @@ ClosureInvoke Compiler::Context::compile()
 	// Run the passes to optimise the function / module.
 	FPM.run(*F);
 	MPM.run(*M);
+
+	addIntSpecialisationPass(Builder, MPM);
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
@@ -274,7 +277,7 @@ CompiledMethod ClosureDecl::compileMethod(Class *cls,
 	{
 		// The type of the object pointer argument
 		PointerType *ArgTy = cast<PointerType>(ClosureInvokeTy->params()[0]);
-		// The type of the object 
+		// The type of the object
 		StructType *ObjTy =
 			cast<StructType>(cast<PointerType>(ArgTy)->getElementType());
 		// This does pointer arithmetic on the first argument to get the address
@@ -467,9 +470,9 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// If there's no method, then we're trying to invoke a closure.
 	if (!method)
 	{
-		// Get the closure invoke type. 
+		// Get the closure invoke type.
 		FunctionType *invokeFnTy = c.getClosureType(0, args.size() - 1);
-		// Get the type of a pointer to the closure object 
+		// Get the type of a pointer to the closure object
 		PointerType *closurePtrTy = cast<PointerType>(invokeFnTy->getParamType(0));
 		// Get the closure type.  Note: This will need to be changed once
 		// typeless pointers are here, so that `getClosureType` will return the
@@ -682,55 +685,65 @@ Value *compileCompare(Compiler::Context &c, CmpInst::Predicate Op,
 Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS,
 		Instruction::BinaryOps Op, const char *slowCallFnName)
 {
+	// // Get the two operands as integer values
+	// Value *LHSInt = getAsSmallInt(c, LHS);
+	// Value *RHSInt = getAsSmallInt(c, RHS);
+	// // And them together.  If they are both small ints, then the low bits of the
+	// // result will be 001.
+	// Value *isSmallInt = c.B.CreateAnd(LHSInt, RHSInt);
+	// // Now mask off the low 3 bits.
+	// isSmallInt = c.B.CreateAnd(isSmallInt, ConstantInt::get(c.ObjIntTy, 7));
+	// // If the low three bits are 001, then it is a small integer
+	// isSmallInt = c.B.CreateICmpEQ(isSmallInt, ConstantInt::get(c.ObjIntTy, 1));
+	// // Create three basic blocks, one for the small int case, one for the real
+	// // object case, and one for when the two join together again.
+	// BasicBlock *cont = BasicBlock::Create(c.C, "cont", c.F);
+	// BasicBlock *small = BasicBlock::Create(c.C, "int", c.F);
+	// BasicBlock *obj = BasicBlock::Create(c.C, "obj", c.F);
+	// // If both arguments are small integers, jump to the small int block,
+	// // otherwise fall back to the other case.
+	// c.B.CreateCondBr(isSmallInt, small, obj);
+
+	// // Now emit the small int code:
+	// c.B.SetInsertPoint(small);
+	// // Shift both values right by 3 to give primitive integer values
+	// LHSInt = c.B.CreateAShr(LHSInt, ConstantInt::get(c.ObjIntTy, 3));
+	// RHSInt = c.B.CreateAShr(RHSInt, ConstantInt::get(c.ObjIntTy, 3));
+	// // Invoke the function passed by the caller to insert the correct operation.
+	// Value *intResult  = c.B.CreateBinOp(Op, LHSInt, RHSInt);
+	// // Now cast the result to an object and branch to the continue block
+	// intResult = getAsObject(c, compileSmallInt(c, intResult));
+	// c.B.CreateBr(cont);
+
+	// // Next we'll handle the real object case.
+	// c.B.SetInsertPoint(obj);
+	// // Call the function that handles the object case
+	// Value *objResult = c.B.CreateCall(c.M->getOrInsertFunction(slowCallFnName,
+	// 			c.ObjPtrTy, LHS->getType(), RHS->getType()),
+	// 		{LHS, RHS});
+	// // And branch to the continuation block
+	// c.B.CreateBr(cont);
+
+	// // Now that we've handled both cases, we need to unify the flow control and
+	// // provide a single value
+	// c.B.SetInsertPoint(cont);
+	// // Construct a PHI node to hold the result.
+	// PHINode *result = c.B.CreatePHI(intResult->getType(), 2, "sub");
+	// // Set its value to the result of whichever basic block we arrived from
+	// result->addIncoming(intResult, small);
+	// result->addIncoming(objResult, obj);
+	// // Return the result
+	// return result;
 	// Get the two operands as integer values
-	Value *LHSInt = getAsSmallInt(c, LHS);
-	Value *RHSInt = getAsSmallInt(c, RHS);
-	// And them together.  If they are both small ints, then the low bits of the
-	// result will be 001.
-	Value *isSmallInt = c.B.CreateAnd(LHSInt, RHSInt);
-	// Now mask off the low 3 bits.
-	isSmallInt = c.B.CreateAnd(isSmallInt, ConstantInt::get(c.ObjIntTy, 7));
-	// If the low three bits are 001, then it is a small integer
-	isSmallInt = c.B.CreateICmpEQ(isSmallInt, ConstantInt::get(c.ObjIntTy, 1));
-	// Create three basic blocks, one for the small int case, one for the real
-	// object case, and one for when the two join together again.
-	BasicBlock *cont = BasicBlock::Create(c.C, "cont", c.F);
-	BasicBlock *small = BasicBlock::Create(c.C, "int", c.F);
-	BasicBlock *obj = BasicBlock::Create(c.C, "obj", c.F);
 	// If both arguments are small integers, jump to the small int block,
 	// otherwise fall back to the other case.
-	c.B.CreateCondBr(isSmallInt, small, obj);
-
-	// Now emit the small int code:
-	c.B.SetInsertPoint(small);
-	// Shift both values right by 3 to give primitive integer values
-	LHSInt = c.B.CreateAShr(LHSInt, ConstantInt::get(c.ObjIntTy, 3));
-	RHSInt = c.B.CreateAShr(RHSInt, ConstantInt::get(c.ObjIntTy, 3));
-	// Invoke the function passed by the caller to insert the correct operation.
-	Value *intResult  = c.B.CreateBinOp(Op, LHSInt, RHSInt);
-	// Now cast the result to an object and branch to the continue block
-	intResult = getAsObject(c, compileSmallInt(c, intResult));
-	c.B.CreateBr(cont);
 
 	// Next we'll handle the real object case.
-	c.B.SetInsertPoint(obj);
 	// Call the function that handles the object case
 	Value *objResult = c.B.CreateCall(c.M->getOrInsertFunction(slowCallFnName,
 				c.ObjPtrTy, LHS->getType(), RHS->getType()),
 			{LHS, RHS});
-	// And branch to the continuation block
-	c.B.CreateBr(cont);
-
-	// Now that we've handled both cases, we need to unify the flow control and
-	// provide a single value
-	c.B.SetInsertPoint(cont);
-	// Construct a PHI node to hold the result.  
-	PHINode *result = c.B.CreatePHI(intResult->getType(), 2, "sub");
-	// Set its value to the result of whichever basic block we arrived from
-	result->addIncoming(intResult, small);
-	result->addIncoming(objResult, obj);
-	// Return the result
-	return result;
+	return objResult;
 }
 } // End anonymous namespace
 
@@ -760,11 +773,11 @@ Value *CmpLE::compileBinOp(Compiler::Context &c, Value *LHS, Value *RHS)
 }
 Value *Subtract::compileBinOp(Compiler::Context &c, Value *LHS, Value *RHS)
 {
-	return compileBinaryOp(c, LHS, RHS, Instruction::Sub, "mysoreScriptAdd");
+	return compileBinaryOp(c, LHS, RHS, Instruction::Sub, "mysoreScriptSub");
 }
 Value *Add::compileBinOp(Compiler::Context &c, Value *LHS, Value *RHS)
 {
-	return compileBinaryOp(c, LHS, RHS, Instruction::Add, "mysoreScriptSub");
+	return compileBinaryOp(c, LHS, RHS, Instruction::Add, "mysoreScriptAdd");
 }
 Value *Multiply::compileBinOp(Compiler::Context &c, Value *LHS, Value *RHS)
 {

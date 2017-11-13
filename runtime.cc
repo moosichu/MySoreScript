@@ -390,7 +390,7 @@ struct Method FileMethods[] =
 /**
  * Method table for the `String` class.
  */
-struct Method StringMethods[] = 
+struct Method StringMethods[] =
 {
 	{
 		length,
@@ -432,7 +432,7 @@ struct Method StringMethods[] =
 /**
  * Method table for the `Number` class.
  */
-struct Method NumberMethods[] = 
+struct Method NumberMethods[] =
 {
 	{
 		dump,
@@ -450,7 +450,7 @@ struct Method NumberMethods[] =
 /**
  * Method table for the `Array` class.
  */
-struct Method ArrayMethods[] = 
+struct Method ArrayMethods[] =
 {
 	{
 		length,
@@ -631,7 +631,7 @@ Method *methodForSelector(Class *cls, Selector sel)
 	return nullptr;
 }
 
-Obj callCompiledMethod(CompiledMethod m, Obj receiver, Selector sel, Obj *args, 
+Obj callCompiledMethod(CompiledMethod m, Obj receiver, Selector sel, Obj *args,
 		int argCount)
 {
 	switch (argCount)
@@ -677,7 +677,7 @@ Obj callCompiledMethod(CompiledMethod m, Obj receiver, Selector sel, Obj *args,
 	}
 }
 
-Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args, 
+Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 		int argCount)
 {
 	switch (argCount)
@@ -726,18 +726,30 @@ extern "C"
 {
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)
 {
+	if (isInteger(lhs) && isInteger(rhs)) {
+		return createSmallInteger(getInteger(lhs) + getInteger(rhs));
+	}
 	return compiledMethodForSelector(lhs, add)(lhs, add, rhs);
 }
 Obj mysoreScriptSub(Obj lhs, Obj rhs)
 {
+	if (isInteger(lhs) && isInteger(rhs)) {
+		return createSmallInteger(getInteger(lhs) - getInteger(rhs));
+	}
 	return compiledMethodForSelector(lhs, sub)(lhs, sub, rhs);
 }
 Obj mysoreScriptMul(Obj lhs, Obj rhs)
 {
+	if (isInteger(lhs) && isInteger(rhs)) {
+		return createSmallInteger(getInteger(lhs) * getInteger(rhs));
+	}
 	return compiledMethodForSelector(lhs, mul)(lhs, mul, rhs);
 }
 Obj mysoreScriptDiv(Obj lhs, Obj rhs)
 {
+	if (isInteger(lhs) && isInteger(rhs)) {
+		return createSmallInteger(getInteger(lhs) / getInteger(rhs));
+	}
 	return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
 }
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
