@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "atomic": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "*.tcc": "cpp"
     }
 }

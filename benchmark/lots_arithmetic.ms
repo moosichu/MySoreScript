@@ -2,6 +2,7 @@ func name (a, b, c, d){
     var x = a + b;
     var y = c + d;
     var z = x + y;
+    //var z = a + b + c + d + x + y + z;
     return z;
 };
 

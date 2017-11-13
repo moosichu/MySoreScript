@@ -1,4 +1,7 @@
 #pragma once
+
+#include <set>
+
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Function.h"
@@ -21,6 +24,13 @@ namespace {
 /// function and so can not change global module state.  If you want to create
 /// or modify globals, then inherit from ModulePass instead.
 ///
+
+const std::string ADD_FUNCTION_NAME = "mysoreScriptAdd";
+const std::string MUL_FUNCTION_NAME = "mysoreScriptMul";
+const std::string SUB_FUNCTION_NAME = "mysoreScriptSub";
+const std::string DIV_FUNCTION_NAME = "mysoreScriptDiv";
+
+
 struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
 {
   /// The module that we're currently working on
@@ -63,17 +73,39 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
 
     visit(F);
 
+    llvm::outs() << "Starting Type Specialisation Pass\n";
+
     llvm::SmallVector<int, 16> functionCount;
+
+    std::set<const Value*> intsToCheck;
+    // std::set<Value*> returnVals
 
     // Alternatively, we can loop over each basic block and then over each
     // instruction and inspect them individually:
     for (const llvm::BasicBlock& BB : F) {
       int numFunctions = 0;
-      for (const llvm::Instruction& I : BB) {
-        // Only count instructions which are on actual targets
-        // TODO: find out if there is a better way to do this?
-        if(isa<CallInst>(&I)) {
-          numFunctions++;
+      for(auto rit = BB.rbegin(); rit != BB.rend(); ++rit) {
+        const llvm::Instruction& I = *rit;
+      //for (const llvm::Instruction& I : BB) {
+        if(const CallInst* arithmeticInst = dyn_cast<CallInst>(&I)) {
+          const Function* arithmeticFunc = arithmeticInst->getCalledFunction();
+          if(ADD_FUNCTION_NAME == arithmeticFunc->getName()) {
+            const Value* leftArg = arithmeticInst->getArgOperand(0);
+            const Value* rightArg = arithmeticInst->getArgOperand(1);
+            // const Value* ret = arithmeticInst->getArgOperand(2);
+            llvm::outs() << "args{\n";
+            llvm::outs() << "  l: " << leftArg << "\n";
+            llvm::outs() << "  r: " << rightArg<< "\n";
+            llvm::outs() << "  v: " << arithmeticInst << "\n";
+            llvm::outs() << "}\n";
+            if(intsToCheck.count(arithmeticInst) > 0) {
+              llvm::outs() << "HERE!!\n";
+              intsToCheck.erase(arithmeticInst);
+            }
+            intsToCheck.insert(leftArg);
+            intsToCheck.insert(rightArg);
+            numFunctions++;
+          }
         }
       }
 
@@ -83,7 +115,9 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
     {
       llvm::outs() << "LLVM_PASS:";
       for(const int numFunctions: functionCount) {
-        llvm::outs() << numFunctions << ",";
+        llvm::outs() << numFunctions << ",\n IntsToCheck: \n";
+        for(auto val: intsToCheck)
+          llvm::outs() << val << "\n";
       }
       llvm::outs() << "\n";
     }
