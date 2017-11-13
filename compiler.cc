@@ -124,8 +124,7 @@ ClosureInvoke Compiler::Context::compile()
 	MPM.run(*M);
 
 	addIntSpecialisationPass(Builder, MPM);
-
-	// If you want to see the LLVM IR before optimisation, uncomment the
+	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
 	//M->dump();
 
