@@ -6,7 +6,11 @@
         {
             "taskName": "build_debug",
             "type": "shell",
-            "command": "cd Debug/ && ninja"
+            "command": "cd Debug/ && ninja",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }
