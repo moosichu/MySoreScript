@@ -109,6 +109,7 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
   }
 
   bool isBinaryOp(const Function* func) {
+    if(func == nullptr) return false;
     return isAddition(func) ||
            isMultiplication(func) ||
            isSubtraction(func) ||
@@ -118,9 +119,6 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
   bool runOnFunction(Function &F) override {
 
     visit(F);
-    LLVMContext& C = F.getContext();
-    llvm::outs() << "Starting Type Specialisation Pass\n";
-
 
     // In this vector of vectors, we will stall contiguous sequences of calls
     // to addition operations.
@@ -136,28 +134,30 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
         if(CallInst* functionCall = dyn_cast<CallInst>(&instruction)) {
           Function* arithmeticFunc = functionCall->getCalledFunction();
           if(isBinaryOp(arithmeticFunc)) {
-            callSequence.push_back(functionCall);
+            inContiguousSequence = true;
             isBinaryOps = true;
+            callSequence.push_back(functionCall);
           }
         }
 
         if(!isBinaryOps && inContiguousSequence) {
+          inContiguousSequence = false;
           callSequences.push_back(callSequence);
           callSequence.clear();
         }
       }
-      callSequences.push_back(callSequence);
+      if(inContiguousSequence) {
+        callSequences.push_back(callSequence);
+      }
     }
 
     Type* ObjIntTy = Type::getInt64Ty(F.getContext());
     Type* ObjPtrTy = Type::getInt8PtrTy(F.getContext());
 
     for(std::vector<CallInst*>& callSequence: callSequences) {
-      llvm::outs() << "Analysing a sequence of contiguous calls \n";
       CallInst* firstBinaryOpCall = callSequence.front();
       CallInst* lastBinaryOpCall = callSequence.back();
       IRBuilder<> irBuilder(firstBinaryOpCall);
-
       // Symbolically keep track of which results map to which symbolic values.
       std::map<Value*, int> resultVals;
       int symbolicInt = 0;
@@ -166,7 +166,6 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
             resultVals.insert(std::pair<Value*, int>(arithmeticInst, symbolicInt++));
           }
       }
-
       ///
       /// Find all the integers that need to be checked, and create the LLVM IR
       /// that performs the checks
@@ -185,7 +184,6 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
           intsToCheck.insert(leftArg);
           intsToCheck.insert(rightArg);
         }
-
         Value* prevInt = nullptr;
         for(Value* intToCheck: intsToCheck) {
           intToCheck = getAsSmallInt2(irBuilder, ObjIntTy, intToCheck);
@@ -287,7 +285,6 @@ struct IntSpecialisationPass : FunctionPass, InstVisitor<IntSpecialisationPass>
         phiNode->addIncoming(binaryOpCall, safeArithmeticBlockTerm->getParent());
       }
     }
-    llvm::outs() << "Ending PASS\n";
     return true;
   }
 }; // END STRUCT
